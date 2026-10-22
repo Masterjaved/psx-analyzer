@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="ur" dir="rtl">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="theme-color" content="#06281f" />
+<title>میرا پورٹ فولیو — PSX تجزیہ کار</title>
+<link rel="manifest" href="manifest.json" />
+<style>
+  :root {
+    --surface-2: #ffffff; --surface-1: #f4f3ee; --surface-0: #ece8dc;
+    --text-primary: #1a1a18; --text-secondary: #5f5e5a; --border: rgba(0,0,0,0.10);
+    --green-fill:#1baf7a; --red-fill:#e34948; --amber:#8a5a00;
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; font-family:"Noto Nastaliq Urdu","Segoe UI",system-ui,sans-serif; background:var(--surface-0); color:var(--text-primary); }
+  main { padding:16px; max-width:720px; margin:0 auto; }
+  h1 { font-size:19px; font-weight:600; margin:16px 0 4px; }
+  h2 { font-size:15px; font-weight:600; margin:0 0 10px; }
+  .card { background:var(--surface-2); border:0.5px solid var(--border); border-radius:12px; padding:16px; margin-bottom:16px; }
+  table { width:100%; border-collapse:collapse; font-size:12.5px; }
+  th,td { padding:7px 5px; text-align:right; border-bottom:0.5px solid var(--border); vertical-align:top; }
+  th { color:var(--text-secondary); font-weight:500; font-size:11px; }
+  .add-form { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+  .add-form input, .add-form select {
+    height:38px; border-radius:8px; border:0.5px solid var(--border);
+    padding:0 10px; font-size:13.5px; background:var(--surface-1); width:100%;
+  }
+  .add-form button, .wl-form button {
+    grid-column:1 / -1; height:40px; border-radius:8px; border:none;
+    background:var(--green-fill); color:white; font-size:13.5px; font-weight:600; cursor:pointer;
+  }
+  .wl-form { display:flex; gap:8px; }
+  .wl-form input { flex:1; height:38px; border-radius:8px; border:0.5px solid var(--border); padding:0 10px; background:var(--surface-1); }
+  .wl-form button { grid-column:auto; padding:0 16px; }
+  .pl-pos { color:#0F6E56; font-weight:600; }
+  .pl-neg { color:#993C1D; font-weight:600; }
+  .remove-btn { background:none; border:none; color:var(--red-fill); cursor:pointer; font-size:13px; }
+  .summary-grid { display:grid; grid-template-columns:repeat(2,1fr); gap:10px; font-size:12.5px; }
+  .summary-grid .box { background:var(--surface-1); border-radius:8px; padding:10px; }
+  .summary-grid .box .lbl { color:var(--text-secondary); font-size:11px; }
+  .summary-grid .box .val { font-size:16px; font-weight:600; margin-top:2px; }
+  .src-note { font-size:10.5px; color:var(--text-secondary); }
+  .err { color:var(--red-fill); font-size:13px; padding:8px 0; }
+  .empty { color:var(--text-secondary); font-size:13px; text-align:center; padding:16px 0; }
+  .tabs { display:flex; gap:8px; margin-bottom:12px; }
+  .tabs button { flex:1; height:36px; border-radius:8px; border:0.5px solid var(--border); background:var(--surface-1); font-size:12.5px; cursor:pointer; }
+  .tabs button.active { background:var(--banner-mid,#0d4636); color:white; border-color:transparent; }
+  .disclaimer { font-size:11px; color:var(--text-secondary); text-align:center; margin-top:8px; }
+</style>
+</head>
+<body>
+
+<main>
+  <h1>میرا پورٹ فولیو</h1>
+
+  <div class="card" id="summaryCard">
+    <h2>خلاصہ</h2>
+    <div id="summaryGrid" class="summary-grid"></div>
+  </div>
+
+  <div class="card">
+    <h2>نئی ٹرانزیکشن شامل کریں</h2>
+    <form id="txForm" class="add-form">
+      <input id="txSymbol" placeholder="سٹاک کوڈ، مثلاً OGDC" dir="ltr" style="text-align:right" required />
+      <select id="txType" required>
+        <option value="BUY">خریداری BUY</option>
+        <option value="SELL">فروخت SELL</option>
+        <option value="DIVIDEND">ڈیویڈنڈ</option>
+        <option value="BONUS">بونس شیئرز</option>
+        <option value="RIGHTS">رائٹس</option>
+        <option value="SPLIT">سپلٹ</option>
+      </select>
+      <input id="txQty" type="number" step="any" placeholder="مقدار" required />
+      <input id="txPrice" type="number" step="any" placeholder="قیمت فی شیئر" />
+      <input id="txDate" type="date" required />
+      <select id="txStrategy">
+        <option value="">Strategy (اختیاری)</option>
+        <option value="SHORT_TERM">Short Term</option>
+        <option value="SWING">Swing</option>
+        <option value="HOLD">Hold</option>
+        <option value="LONG_TERM">Long Term</option>
+        <option value="WATCHLIST">Watchlist</option>
+      </select>
+      <button type="submit">شامل کریں</button>
+    </form>
+    <p id="txErr" class="err" style="display:none;"></p>
+  </div>
+
+  <div class="card">
+    <h2>موجودہ ہولڈنگز</h2>
+    <div id="posErr" class="err" style="display:none;"></div>
+    <div style="overflow-x:auto;">
+      <table>
+        <thead><tr><th>سٹاک</th><th>مقدار</th><th>اوسط لاگت</th><th>موجودہ قیمت</th><th>منافع/نقصان</th><th>وزن</th></tr></thead>
+        <tbody id="posBody"></tbody>
+      </table>
+    </div>
+    <p id="posEmpty" class="empty" style="display:none;">ابھی کوئی ہولڈنگ نہیں۔</p>
+  </div>
+
+  <div class="card">
+    <h2>ٹرانزیکشن ہسٹری</h2>
+    <div style="overflow-x:auto;">
+      <table>
+        <thead><tr><th>تاریخ</th><th>سٹاک</th><th>قسم</th><th>مقدار</th><th>قیمت</th><th></th></tr></thead>
+        <tbody id="txBody"></tbody>
+      </table>
+    </div>
+    <p id="txEmpty" class="empty" style="display:none;">ابھی کوئی ٹرانزیکشن نہیں۔</p>
+  </div>
+
+  <div class="card">
+    <h2>واچ لسٹ</h2>
+    <form id="wlForm" class="wl-form">
+      <input id="wlSymbol" placeholder="سٹاک کوڈ شامل کریں" dir="ltr" style="text-align:right" required />
+      <button type="submit">شامل کریں</button>
+    </form>
+    <div style="overflow-x:auto; margin-top:10px;">
+      <table>
+        <thead><tr><th>سٹاک</th><th>نوٹس</th><th></th></tr></thead>
+        <tbody id="wlBody"></tbody>
+      </table>
+    </div>
+    <p id="wlEmpty" class="empty" style="display:none;">واچ لسٹ خالی ہے۔</p>
+  </div>
+
+  <p class="disclaimer">⚠️ یہ AI تجزیہ صرف تکنیکی اشاروں پر مبنی ہے، سرمایہ کاری کی گارنٹی نہیں۔ حتمی فیصلہ اور رسک آپ کا اپنا ہے۔</p>
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="esc.js"></script>
+<script src="supabaseClient.js"></script>
+<script src="auth.js"></script>
+<script>
+function fmt(n) {
+  if (n == null || Number.isNaN(n)) return "-";
+  return Number(n).toLocaleString("en-US", { maximumFractionDigits: 2 });
+}
+function plClass(n) { return n == null ? "" : n >= 0 ? "pl-pos" : "pl-neg"; }
+
+async function loadSummaryAndPositions() {
+  const posErrEl = document.getElementById("posErr");
+  const posEmptyEl = document.getElementById("posEmpty");
+  const posBody = document.getElementById("posBody");
+  posErrEl.style.display = "none";
+  try {
+    const resp = await authFetch("/api/positions");
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.error || `خرابی (${resp.status})`);
+
+    const summaryGrid = document.getElementById("summaryGrid");
+    const t = data.totals || { investedAmount: 0, currentValue: 0, unrealizedPL: 0, realizedPL: 0 };
+    summaryGrid.innerHTML = `
+      <div class="box"><div class="lbl">کل سرمایہ کاری</div><div class="val">${fmt(t.investedAmount)}</div></div>
+      <div class="box"><div class="lbl">موجودہ مالیت</div><div class="val">${fmt(t.currentValue)}</div></div>
+      <div class="box"><div class="lbl">غیر حقیقی منافع/نقصان</div><div class="val ${plClass(t.unrealizedPL)}">${fmt(t.unrealizedPL)}</div></div>
+      <div class="box"><div class="lbl">حقیقی منافع/نقصان (بیچے گئے)</div><div class="val ${plClass(t.realizedPL)}">${fmt(t.realizedPL)}</div></div>
+    `;
+
+    posBody.innerHTML = "";
+    (data.open || []).forEach((p) => {
+      const tr = document.createElement("tr");
+      const priceCell = p.price != null
+        ? `${escapeHtml(fmt(p.price))}<br><span class="src-note">${escapeHtml(p.data_source || "")} · ${escapeHtml(p.data_as_of || "")}</span>`
+        : `<span class="err" style="padding:0;">${escapeHtml(p.error || "ڈیٹا دستیاب نہیں")}</span>`;
+      tr.innerHTML = `
+        <td style="font-weight:600;">${escapeHtml(p.symbol)}</td>
+        <td>${escapeHtml(fmt(p.qty))}</td>
+        <td>${escapeHtml(fmt(p.avgCost))}</td>
+        <td>${priceCell}</td>
+        <td class="${plClass(p.unrealizedPL)}">${escapeHtml(fmt(p.unrealizedPL))}${p.unrealizedPLPct != null ? ` (${escapeHtml(fmt(p.unrealizedPLPct))}%)` : ""}</td>
+        <td>${p.weightPct != null ? escapeHtml(fmt(p.weightPct)) + "%" : "-"}</td>
+      `;
+      posBody.appendChild(tr);
+    });
+    posEmptyEl.style.display = (data.open || []).length ? "none" : "block";
+  } catch (err) {
+    posErrEl.textContent = "خرابی: " + err.message;
+    posErrEl.style.display = "block";
+  }
+}
+
+async function loadTransactions() {
+  const txBody = document.getElementById("txBody");
+  const txEmpty = document.getElementById("txEmpty");
+  try {
+    const resp = await authFetch("/api/transactions");
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.error || `خرابی (${resp.status})`);
+
+    txBody.innerHTML = "";
+    (data.transactions || []).forEach((t) => {
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td>${escapeHtml(t.transaction_date)}</td>
+        <td style="font-weight:600;">${escapeHtml(t.symbol)}</td>
+        <td>${escapeHtml(t.transaction_type)}</td>
+        <td>${escapeHtml(fmt(t.quantity))}</td>
+        <td>${escapeHtml(fmt(t.price))}</td>
+        <td><button class="remove-btn" data-id="${escapeHtml(t.id)}">✕</button></td>
+      `;
+      txBody.appendChild(tr);
+    });
+    txEmpty.style.display = (data.transactions || []).length ? "none" : "block";
+
+    txBody.querySelectorAll(".remove-btn").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        if (!confirm("یہ ٹرانزیکشن ہٹائیں؟")) return;
+        await authFetch(`/api/transactions?id=${encodeURIComponent(btn.dataset.id)}`, { method: "DELETE" });
+        await Promise.all([loadTransactions(), loadSummaryAndPositions()]);
+      });
+    });
+  } catch (err) {
+    txBody.innerHTML = `<tr><td colspan="6" class="err">خرابی: ${escapeHtml(err.message)}</td></tr>`;
+  }
+}
+
+async function loadWatchlist() {
+  const wlBody = document.getElementById("wlBody");
+  const wlEmpty = document.getElementById("wlEmpty");
+  try {
+    const resp = await authFetch("/api/watchlist");
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.error || `خرابی (${resp.status})`);
+
+    wlBody.innerHTML = "";
+    data.forEach((w) => {
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td style="font-weight:600;">${escapeHtml(w.symbol)}</td>
+        <td>${escapeHtml(w.notes || "-")}</td>
+        <td><button class="remove-btn" data-symbol="${escapeHtml(w.symbol)}">✕</button></td>
+      `;
+      wlBody.appendChild(tr);
+    });
+    wlEmpty.style.display = data.length ? "none" : "block";
+
+    wlBody.querySelectorAll(".remove-btn").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        await authFetch(`/api/watchlist?symbol=${encodeURIComponent(btn.dataset.symbol)}`, { method: "DELETE" });
+        await loadWatchlist();
+      });
+    });
+  } catch (err) {
+    wlBody.innerHTML = `<tr><td colspan="3" class="err">خرابی: ${escapeHtml(err.message)}</td></tr>`;
+  }
+}
+
+document.getElementById("txForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const errEl = document.getElementById("txErr");
+  errEl.style.display = "none";
+  const body = {
+    symbol: document.getElementById("txSymbol").value.trim().toUpperCase(),
+    transaction_type: document.getElementById("txType").value,
+    quantity: parseFloat(document.getElementById("txQty").value),
+    price: document.getElementById("txPrice").value ? parseFloat(document.getElementById("txPrice").value) : 0,
+    transaction_date: document.getElementById("txDate").value,
+    strategy: document.getElementById("txStrategy").value || undefined,
+  };
+  try {
+    const resp = await authFetch("/api/transactions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.error || `خرابی (${resp.status})`);
+    document.getElementById("txForm").reset();
+    await Promise.all([loadTransactions(), loadSummaryAndPositions()]);
+  } catch (err) {
+    errEl.textContent = "خرابی: " + err.message;
+    errEl.style.display = "block";
+  }
+});
+
+document.getElementById("wlForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const symbol = document.getElementById("wlSymbol").value.trim().toUpperCase();
+  if (!symbol) return;
+  await authFetch("/api/watchlist", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ symbol }),
+  });
+  document.getElementById("wlSymbol").value = "";
+  await loadWatchlist();
+});
+
+requireLogin(() => {
+  loadSummaryAndPositions();
+  loadTransactions();
+  loadWatchlist();
+});
+</script>
+</body>
+</html>

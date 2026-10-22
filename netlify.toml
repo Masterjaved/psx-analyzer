@@ -1,0 +1,49 @@
+[build]
+  functions = "netlify/functions"
+  # Only the contents of public/ are served to visitors. (Before, publish
+  # was "." which also exposed package.json, README and the function
+  # source files on the public site.)
+  publish = "public"
+
+[build.environment]
+  NODE_VERSION = "20"
+
+[[redirects]]
+  from = "/api/*"
+  to = "/.netlify/functions/:splat"
+  status = 200
+
+[functions."daily-alert-check"]
+  schedule = "30 10 * * 1-5"
+
+# ---- Security headers ---------------------------------------------------
+# (A Content-Security-Policy is intentionally not set yet: the pages still
+# use inline scripts/styles. Moving them to separate files is a later step.)
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Content-Type-Options = "nosniff"
+    X-Frame-Options = "DENY"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+    Permissions-Policy = "camera=(), microphone=(), geolocation=()"
+
+# Never let a browser/CDN keep a stale copy of login or data code.
+[[headers]]
+  for = "/*.html"
+  [headers.values]
+    Cache-Control = "no-cache"
+
+[[headers]]
+  for = "/auth.js"
+  [headers.values]
+    Cache-Control = "no-cache"
+
+[[headers]]
+  for = "/supabaseClient.js"
+  [headers.values]
+    Cache-Control = "no-cache"
+
+[[headers]]
+  for = "/app.js"
+  [headers.values]
+    Cache-Control = "no-cache"

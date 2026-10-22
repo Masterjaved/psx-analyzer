@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="ur" dir="rtl">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="theme-color" content="#06281f" />
+<title>PSX سٹاک تجزیہ کار</title>
+<link rel="manifest" href="manifest.json" />
+<style>
+  :root {
+    --surface-2: #ffffff;
+    --surface-1: #f4f3ee;
+    --surface-0: #ece8dc;
+    --text-primary: #1a1a18;
+    --text-secondary: #5f5e5a;
+    --border: rgba(0,0,0,0.10);
+    --green-bg: #E1F5EE; --green-text: #04342C; --green-fill:#1baf7a;
+    --red-bg: #FCEBEB; --red-text: #501313; --red-fill:#e34948;
+    --amber-bg: #FAEEDA; --amber-text: #412402;
+    --banner-dark: #06281f;
+    --banner-mid: #0d4636;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: "Noto Nastaliq Urdu", "Segoe UI", system-ui, sans-serif;
+    background: var(--surface-0);
+    color: var(--text-primary);
+  }
+  .banner {
+    position: relative;
+    background: linear-gradient(150deg, var(--banner-dark) 0%, var(--banner-mid) 100%);
+    color: #f2f7f4;
+    padding: 22px 16px 26px;
+    overflow: hidden;
+  }
+  .banner svg.ticker-bg {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    opacity: 0.22;
+  }
+  .banner-content { position: relative; z-index: 1; }
+  .banner-badge {
+    display: inline-flex; align-items: center; gap: 6px;
+    background: rgba(255,255,255,0.12); border: 0.5px solid rgba(255,255,255,0.25);
+    border-radius: 20px; padding: 3px 10px; font-size: 11px; margin-bottom: 8px;
+    color: #cdeee2;
+  }
+  h1 { font-size: 21px; font-weight: 600; margin: 0 0 4px; color: #ffffff; }
+  .sub { font-size: 13px; color: #a9d3c4; margin: 0; }
+
+  main { padding: 16px; }
+
+  .card {
+    background: var(--surface-2);
+    border: 0.5px solid var(--border);
+    border-radius: 12px;
+    padding: 16px;
+    margin-bottom: 16px;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+  }
+
+  .add-row { display: flex; gap: 8px; margin-bottom: 8px; }
+  .add-row input {
+    flex: 1; height: 40px; border-radius: 8px; border: 0.5px solid var(--border);
+    padding: 0 12px; font-size: 15px; background: var(--surface-1);
+  }
+  .add-row button {
+    height: 40px; padding: 0 16px; border-radius: 8px; border: none;
+    background: var(--green-fill); color: white; font-size: 14px; font-weight: 500;
+    cursor: pointer;
+  }
+  .add-row button:disabled { opacity: 0.5; cursor: not-allowed; }
+  .hint { font-size: 12px; color: var(--text-secondary); margin: 4px 0 0; }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+  .chip {
+    display: flex; align-items: center; gap: 6px;
+    background: var(--surface-1); border-radius: 20px; padding: 6px 12px; font-size: 13px;
+  }
+  .chip button { border: none; background: none; cursor: pointer; font-size: 14px; color: var(--text-secondary); }
+
+  .analyze-btn {
+    width: 100%; height: 46px; border-radius: 8px; border: none;
+    background: linear-gradient(135deg, var(--banner-mid), var(--green-fill));
+    color: white; font-size: 15px; font-weight: 600; cursor: pointer;
+    box-shadow: 0 2px 6px rgba(13,70,54,0.25);
+  }
+  .analyze-btn:disabled { opacity: 0.5; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { text-align: right; padding: 8px 6px; color: var(--text-secondary); font-weight: 500; border-bottom: 0.5px solid var(--border); }
+  td { padding: 10px 6px; border-bottom: 0.5px solid var(--border); vertical-align: top; }
+  .badge { padding: 2px 8px; border-radius: 8px; font-size: 12px; display: inline-block; }
+  .up-pos { color: #0F6E56; font-weight: 500; }
+  .up-neg { color: #993C1D; font-weight: 500; }
+  .ai-note { font-size: 12px; color: var(--text-secondary); margin: 4px 0 0; line-height: 1.6; }
+  .provider-tag { font-size: 11px; color: var(--text-secondary); }
+
+  .detail-btn {
+    background: none; border: 0.5px solid var(--border); border-radius: 6px;
+    padding: 4px 8px; font-size: 11px; color: var(--text-secondary); cursor: pointer;
+  }
+  .detail-row td { background: var(--surface-1); }
+  .range-badges { display: flex; flex-wrap: wrap; gap: 8px; margin: 6px 0; }
+  .range-badge { font-size: 11px; background: var(--surface-2); border: 0.5px solid var(--border); border-radius: 8px; padding: 4px 8px; }
+  .intraday-wrap { position: relative; width: 100%; height: 140px; margin-top: 8px; }
+  .intraday-status { font-size: 12px; color: var(--text-secondary); }
+
+  .chart-wrap { position: relative; width: 100%; height: 220px; margin-top: 12px; }
+  .legend { display: flex; gap: 16px; font-size: 12px; color: var(--text-secondary); margin-bottom: 4px; }
+  .legend span { display: flex; align-items: center; gap: 4px; }
+  .dot { width: 10px; height: 10px; border-radius: 2px; }
+
+  .empty-state { text-align: center; color: var(--text-secondary); padding: 24px 0; font-size: 14px; }
+  .disclaimer { font-size: 11px; color: var(--text-secondary); text-align: center; margin-top: 8px; }
+</style>
+</head>
+<body>
+
+<div class="banner">
+  <svg class="ticker-bg" viewBox="0 0 400 120" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
+    <polyline points="0,80 20,70 40,85 60,55 80,60 100,35 120,45 140,30 160,50 180,25 200,40 220,20 240,38 260,15 280,30 300,10 320,28 340,18 360,32 380,12 400,22" fill="none" stroke="#5fd6ac" stroke-width="2"/>
+    <g stroke="#5fd6ac" stroke-width="2">
+      <line x1="30" y1="95" x2="30" y2="115"/><rect x="26" y="98" width="8" height="12" fill="#5fd6ac"/>
+      <line x1="70" y1="90" x2="70" y2="118"/><rect x="66" y="95" width="8" height="15" fill="none" stroke="#5fd6ac"/>
+      <line x1="110" y1="88" x2="110" y2="112"/><rect x="106" y="92" width="8" height="10" fill="#5fd6ac"/>
+      <line x1="150" y1="92" x2="150" y2="116"/><rect x="146" y="96" width="8" height="14" fill="none" stroke="#5fd6ac"/>
+      <line x1="190" y1="85" x2="190" y2="110"/><rect x="186" y="88" width="8" height="12" fill="#5fd6ac"/>
+      <line x1="230" y1="90" x2="230" y2="115"/><rect x="226" y="94" width="8" height="11" fill="none" stroke="#5fd6ac"/>
+      <line x1="270" y1="86" x2="270" y2="112"/><rect x="266" y="90" width="8" height="13" fill="#5fd6ac"/>
+      <line x1="310" y1="92" x2="310" y2="117"/><rect x="306" y="96" width="8" height="12" fill="none" stroke="#5fd6ac"/>
+      <line x1="350" y1="88" x2="350" y2="110"/><rect x="346" y="91" width="8" height="10" fill="#5fd6ac"/>
+    </g>
+  </svg>
+  <div class="banner-content">
+    <span class="banner-badge">🇵🇰 KSE-100 · PSX</span>
+    <h1>PSX سٹاک تجزیہ کار</h1>
+    <p class="sub">Pakistan Stock Exchange — AI-powered analysis</p>
+  </div>
+</div>
+
+<main>
+
+<div class="card">
+  <div class="add-row">
+    <input id="symbolInput" type="text" placeholder="سٹاک کا کوڈ لکھیں، مثلاً HBL" dir="ltr" style="text-align:right" />
+    <button id="addBtn">شامل کریں</button>
+  </div>
+  <p class="hint" id="symbolHint">3 سے 10 سٹاکس شامل کریں / Add 3–10 stocks</p>
+  <div class="chips" id="chips"></div>
+</div>
+
+<button class="analyze-btn" id="analyzeBtn" disabled>تجزیہ کریں / Analyze</button>
+
+<div class="card" id="resultsCard" style="display:none; margin-top:16px;">
+  <div style="overflow-x:auto;">
+    <table>
+      <thead>
+        <tr>
+          <th>سٹاک<br><span style="font-weight:400;font-size:11px;">Stock</span></th>
+          <th>قیمت<br><span style="font-weight:400;font-size:11px;">Price</span></th>
+          <th>پوزیشن<br><span style="font-weight:400;font-size:11px;">Position</span></th>
+          <th>اضافہ<br><span style="font-weight:400;font-size:11px;">Upside</span></th>
+          <th>خریدیں؟<br><span style="font-weight:400;font-size:11px;">Buy?</span></th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody id="tblBody"></tbody>
+    </table>
+  </div>
+
+  <div class="legend" style="margin-top:16px;">
+    <span><span class="dot" style="background:#1baf7a;"></span>ممکنہ اضافہ %</span>
+  </div>
+  <div class="chart-wrap">
+    <canvas id="cmpChart" role="img" aria-label="منتخب سٹاکس کے ممکنہ اضافے کا موازنہ">
+    </canvas>
+  </div>
+</div>
+
+<div class="empty-state" id="emptyState">ابھی کوئی سٹاک شامل نہیں کیا گیا۔</div>
+
+<p class="disclaimer">⚠️ یہ AI تجزیہ صرف تکنیکی اشاروں پر مبنی ہے، سرمایہ کاری کی گارنٹی نہیں۔ حتمی فیصلہ اور رسک آپ کا اپنا ہے۔</p>
+</main>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="esc.js"></script>
+<script src="supabaseClient.js"></script>
+<script src="auth.js"></script>
+<script src="app.js"></script>
+<script>requireLogin();</script>
+</body>
+</html>

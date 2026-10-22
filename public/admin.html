@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="ur" dir="rtl">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="theme-color" content="#06281f" />
+<title>ایڈمن ویو — PSX تجزیہ کار</title>
+<style>
+  :root {
+    --surface-2: #ffffff; --surface-1: #f4f3ee; --surface-0: #ece8dc;
+    --text-primary: #1a1a18; --text-secondary: #5f5e5a; --border: rgba(0,0,0,0.10);
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; font-family:"Noto Nastaliq Urdu","Segoe UI",system-ui,sans-serif; background:var(--surface-0); color:var(--text-primary); }
+  main { padding:16px; max-width:700px; margin:0 auto; }
+  h1 { font-size:19px; font-weight:600; margin:16px 0; }
+  .card { background:var(--surface-2); border:0.5px solid var(--border); border-radius:12px; padding:16px; margin-bottom:16px; }
+  .user-email { font-weight:600; font-size:14px; margin-bottom:6px; }
+  table { width:100%; border-collapse:collapse; font-size:13px; margin-top:6px; }
+  th,td { padding:6px; text-align:right; border-bottom:0.5px solid var(--border); }
+  th { color:var(--text-secondary); font-weight:500; }
+  .denied { text-align:center; padding:40px 16px; color:var(--text-secondary); }
+  .tools { display:flex; flex-wrap:wrap; gap:8px; }
+  .tools button { height:38px; padding:0 14px; border-radius:8px; border:0.5px solid var(--border); background:var(--surface-1); font-size:13px; cursor:pointer; }
+  .tools button.danger { background:#FCEBEB; color:#501313; }
+  #toolOut { direction:ltr; text-align:left; white-space:pre-wrap; word-break:break-word; font-size:12px; margin:10px 0 0; max-height:260px; overflow:auto; }
+</style>
+</head>
+<body>
+
+<main>
+  <h1>ایڈمن ویو — تمام صارفین کے پورٹ فولیوز</h1>
+  <div class="card" id="toolsCard" style="display:none;">
+    <div class="user-email">سسٹم ٹولز</div>
+    <div class="tools">
+      <button id="btnEnv">API keys کی حالت</button>
+      <button id="btnDry">روزانہ الرٹ چیک (ای میل بھیجے بغیر)</button>
+      <button id="btnRun" class="danger">روزانہ الرٹ ابھی چلائیں (ای میل بھیجے گا)</button>
+    </div>
+    <pre id="toolOut"></pre>
+  </div>
+  <div id="content"></div>
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="esc.js"></script>
+<script src="supabaseClient.js"></script>
+<script src="auth.js"></script>
+<script>
+async function runTool(url, label, confirmText) {
+  if (confirmText && !confirm(confirmText)) return;
+  const out = document.getElementById("toolOut");
+  out.textContent = label + " …";
+  try {
+    const resp = await authFetch(url);
+    const data = await resp.json().catch(() => ({}));
+    out.textContent = `${label} — status ${resp.status}\n` + JSON.stringify(data, null, 2);
+  } catch (e) {
+    out.textContent = `${label} — network error: ${e.message}`;
+  }
+}
+
+function setupTools() {
+  document.getElementById("toolsCard").style.display = "block";
+  document.getElementById("btnEnv").onclick = () => runTool("/api/debug-env", "Environment check");
+  document.getElementById("btnDry").onclick = () => runTool("/api/daily-alert-check?dryRun=1", "Daily alert dry run");
+  document.getElementById("btnRun").onclick = () =>
+    runTool("/api/daily-alert-check", "Daily alert run", "یہ اصل ای میلیں بھیجے گا۔ جاری رکھیں؟");
+}
+
+function fmt(n) {
+  if (n == null || Number.isNaN(n)) return "-";
+  return Number(n).toLocaleString("en-US", { maximumFractionDigits: 2 });
+}
+
+async function loadAdminData() {
+  const content = document.getElementById("content");
+
+  if (!isAdmin()) {
+    content.innerHTML = `<div class="denied">یہ صفحہ صرف ایڈمن کے لیے ہے۔</div>`;
+    return;
+  }
+
+  setupTools();
+
+  const resp = await authFetch("/api/admin-users");
+  if (!resp.ok) {
+    const err = await resp.json().catch(() => ({}));
+    content.innerHTML = `<div class="denied">خرابی: ${escapeHtml(err.error || resp.status)}</div>`;
+    return;
+  }
+  const users = await resp.json();
+
+  if (users.length === 0) {
+    content.innerHTML = `<div class="denied">ابھی کوئی صارف نہیں ملا۔</div>`;
+    return;
+  }
+
+  content.innerHTML = users
+    .map((u) => {
+      const rows = (u.openPositions || [])
+        .map(
+          (p) =>
+            `<tr><td style="font-weight:500;">${escapeHtml(p.symbol)}</td><td>${escapeHtml(fmt(p.qty))}</td><td>${escapeHtml(fmt(p.avgCost))}</td><td class="${p.realizedPL >= 0 ? "" : ""}">${escapeHtml(fmt(p.investedAmount))}</td></tr>`
+        )
+        .join("");
+      return `
+        <div class="card">
+          <div class="user-email">${escapeHtml(u.email || u.userId)} ${u.role === "admin" ? "(ایڈمن)" : ""}</div>
+          <table>
+            <thead><tr><th>سٹاک</th><th>مقدار</th><th>اوسط لاگت</th><th>سرمایہ کاری</th></tr></thead>
+            <tbody>${rows || '<tr><td colspan="4">کوئی کھلی ہولڈنگ نہیں</td></tr>'}</tbody>
+          </table>
+        </div>
+      `;
+    })
+    .join("");
+}
+
+requireLogin(() => loadAdminData());
+</script>
+</body>
+</html>

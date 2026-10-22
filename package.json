@@ -1,0 +1,16 @@
+{
+  "name": "psx-stock-analyzer",
+  "version": "1.2.0",
+  "private": true,
+  "description": "PSX (Pakistan Stock Exchange) stock analyzer — Netlify + Netlify Functions",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "test": "node --test"
+  },
+  "dependencies": {
+    "cheerio": "^1.0.0",
+    "@netlify/blobs": "^8.1.0"
+  }
+}
