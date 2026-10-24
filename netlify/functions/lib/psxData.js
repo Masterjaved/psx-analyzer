@@ -2,33 +2,26 @@
  * Fetches PSX (Pakistan Stock Exchange) price history from the PSX Data
  * Portal Services (DPS) site — https://dps.psx.com.pk
  *
- * KNOWN PSX ISSUE (confirmed independently, see
- * https://github.com/umairsandhu/psx-dps#why-this-exists):
- * dps.psx.com.pk is served by several rotating nodes (IPs). SOME of these
- * nodes return 404 (styled as an ordinary page, not an error page) for
- * every data/API route, while serving normal HTML pages with 200 just
- * fine. DNS hands out a random node, so a plain fetch() to an API route
- * is a coin flip — and because Node/undici reuses one resolved connection
- * per warm function instance, EVERY symbol in a given Netlify Function
- * invocation fails identically if that instance got a broken node.
+ * KNOWN PSX ISSUE: dps.psx.com.pk is served by several rotating nodes.
+ * Some nodes return 404 (styled as an ordinary page) for data/API routes
+ * while serving normal HTML pages fine. DNS hands out a random node, so a
+ * single request is a coin flip.
  *
- * Fix: resolve all current A records for dps.psx.com.pk ourselves, and
- * try each IP in turn (pinned to the hostname via TLS SNI/Host, so it's
- * still a normal HTTPS request to dps.psx.com.pk — just forced to a
- * specific node) until one actually returns JSON. The working IP is
- * cached in-memory for a few minutes so most requests only try once.
+ * An earlier version of this file tried pinning requests to a specific
+ * resolved IP to work around this — that approach fails outright in
+ * Netlify's network ("fetch failed"), apparently because direct-IP
+ * connections aren't permitted there. So instead: just retry the normal
+ * request several times. A plain request to the hostname works fine here
+ * (confirmed: we get real HTTP responses, not connection errors) — it's
+ * only a matter of which node DNS happens to route to.
  *
  *   https://dps.psx.com.pk/timeseries/eod/{SYMBOL}  — end-of-day history
  *   https://dps.psx.com.pk/timeseries/int/{SYMBOL}  — today's intraday ticks
  *
- * These endpoints are undocumented by PSX and can change shape without
- * notice. If this starts failing again, check the Netlify function logs
- * first — every failure here is logged with the exact path, IP tried,
- * and status/error, so the real cause should be visible immediately.
+ * Undocumented by PSX, can change shape without notice. Check the Netlify
+ * function logs first if this fails again — every attempt is logged with
+ * its outcome.
  */
-
-const dns = require("node:dns").promises;
-const { Agent } = require("undici");
 
 const PSX_HOST = "dps.psx.com.pk";
 const DATA_SOURCE = "PSX Data Portal (dps.psx.com.pk)";
@@ -39,97 +32,64 @@ const HEADERS = {
 };
 
 const FETCH_TIMEOUT_MS = 8000;
-
-// Pin the last node that actually served data, so most requests in a warm
-// function instance only try once instead of re-probing every time.
-let pinnedIP = null;
-let pinnedAt = 0;
-const PIN_TTL_MS = 5 * 60 * 1000;
+const MAX_ATTEMPTS = 5;
+const RETRY_BASE_DELAY_MS = 500;
 
 class PSXDataError extends Error {}
 
-function agentForIP(ip) {
-  return new Agent({
-    connect: {
-      lookup: (_hostname, _options, callback) => callback(null, ip, 4),
-    },
-  });
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function candidateIPs() {
-  try {
-    const ips = await dns.resolve4(PSX_HOST);
-    return [...new Set(ips)];
-  } catch (e) {
-    console.error(`[psxData] DNS resolve4(${PSX_HOST}) failed: ${e.message}`);
-    return [];
-  }
-}
-
-async function fetchJsonFromIP(path, ip) {
-  const url = `https://${PSX_HOST}${path}`;
+async function fetchJsonOnce(url) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
   try {
-    const resp = await fetch(url, {
-      headers: HEADERS,
-      dispatcher: ip ? agentForIP(ip) : undefined,
-      signal: controller.signal,
-    });
+    const resp = await fetch(url, { headers: HEADERS, signal: controller.signal });
     if (!resp.ok) {
+      const bodySnippet = await resp.text().catch(() => "");
       const err = new Error(`status ${resp.status}`);
       err.status = resp.status;
+      err.bodySnippet = bodySnippet.slice(0, 150);
       throw err;
     }
     const text = await resp.text();
-    return JSON.parse(text); // throws if PSX served HTML instead of JSON
+    try {
+      return JSON.parse(text);
+    } catch {
+      const err = new Error("response was not JSON — PSX likely served its normal site page instead of data");
+      err.bodySnippet = text.slice(0, 150);
+      throw err;
+    }
   } finally {
     clearTimeout(timer);
   }
 }
 
-/** Fetches a dps.psx.com.pk JSON path, working around the rotating-node
- * 404 issue described above. */
+/** Fetches a dps.psx.com.pk JSON path, retrying a few times since PSX's
+ * rotating nodes mean any single request may hit a broken one. */
 async function fetchPsxJson(path) {
-  if (pinnedIP && Date.now() - pinnedAt < PIN_TTL_MS) {
-    try {
-      return await fetchJsonFromIP(path, pinnedIP);
-    } catch (e) {
-      console.error(`[psxData] pinned node ${pinnedIP} failed for ${path}: ${e.message} — re-probing other nodes`);
-      pinnedIP = null;
-    }
-  }
-
-  const ips = await candidateIPs();
-  if (ips.length === 0) {
-    // DNS lookup itself failed — fall back to a plain request so a clear
-    // error still surfaces instead of silently returning nothing.
-    return fetchJsonFromIP(path, null);
-  }
-
+  const url = `https://${PSX_HOST}${path}`;
   const failures = [];
-  for (const ip of ips) {
+
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     try {
-      const data = await fetchJsonFromIP(path, ip);
-      pinnedIP = ip;
-      pinnedAt = Date.now();
-      return data;
+      return await fetchJsonOnce(url);
     } catch (e) {
-      failures.push(`${ip} → ${e.status ? `status ${e.status}` : e.message}`);
+      failures.push(`attempt ${attempt}: ${e.status ? `status ${e.status}` : e.message}`);
+      if (attempt < MAX_ATTEMPTS) await sleep(RETRY_BASE_DELAY_MS * attempt);
     }
   }
 
-  console.error(`[psxData] all ${ips.length} PSX node(s) failed for ${path} — ${failures.join("; ")}`);
-  const err = new Error(`no working PSX node for ${path} (tried ${ips.length}: ${failures.join("; ")})`);
-  err.allNodesFailed = true;
+  console.error(`[psxData] ${path} failed after ${MAX_ATTEMPTS} attempts — ${failures.join("; ")}`);
+  const err = new Error(`${path} failed after ${MAX_ATTEMPTS} attempts`);
   throw err;
 }
 
 /**
- * The EOD timeseries route returns rows as [epochSeconds, close, volume,
- * open] — NOT full OHLC (confirmed: no high/low on this route). High/low
- * are approximated from open/close, which is fine for price display and
- * most indicators but is not true intraday range.
+ * EOD timeseries rows come as [epochSeconds, close, volume, open] — not
+ * full OHLC (no high/low on this route). High/low approximated from
+ * open/close.
  */
 function normalizeEodRow(row) {
   if (!Array.isArray(row) || row.length < 4) return null;
@@ -162,10 +122,7 @@ async function fetchHistoryUncached(symbol) {
   try {
     data = await fetchPsxJson(path);
   } catch (e) {
-    if (e.status) {
-      throw new PSXDataError(`'${sym}' کے لیے PSX سے جواب نہیں ملا (status ${e.status})`);
-    }
-    throw new PSXDataError(`'${sym}' کی تاریخی قیمتیں نہیں ملیں / network error: ${e.message}`);
+    throw new PSXDataError(`'${sym}' کی تاریخی قیمتیں نہیں ملیں — PSX بار بار جواب نہیں دے رہا (${e.message})`);
   }
 
   const rawRows = Array.isArray(data?.data) ? data.data : Array.isArray(data) ? data : [];
@@ -206,10 +163,7 @@ async function fetchIntraday(symbol) {
   try {
     data = await fetchPsxJson(path);
   } catch (e) {
-    if (e.status) {
-      throw new PSXDataError(`'${sym}' کے آج کے ڈیٹا کے لیے PSX سے جواب نہیں ملا (status ${e.status})`);
-    }
-    throw new PSXDataError(`'${sym}' کا آج کا ڈیٹا نہیں ملا / network error: ${e.message}`);
+    throw new PSXDataError(`'${sym}' کا آج کا ڈیٹا نہیں ملا — PSX بار بار جواب نہیں دے رہا (${e.message})`);
   }
 
   const points = Array.isArray(data?.data) ? data.data : [];
