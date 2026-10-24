@@ -9,7 +9,7 @@
   "scripts": {
     "test": "node --test"
   },
-  "dependencies": {
+  "dependencies", "undici": "^6.21.0", {
     "cheerio": "^1.0.0",
     "@netlify/blobs": "^8.1.0"
   }
