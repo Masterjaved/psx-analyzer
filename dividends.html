@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="ur" dir="rtl">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="theme-color" content="#06281f" />
+<title>ڈیویڈنڈ کیلنڈر — PSX تجزیہ کار</title>
+<link rel="manifest" href="manifest.json" />
+<style>
+  :root {
+    --surface-2: #ffffff; --surface-1: #f4f3ee; --surface-0: #ece8dc;
+    --text-primary: #1a1a18; --text-secondary: #5f5e5a; --border: rgba(0,0,0,0.10);
+    --green-fill:#1baf7a;
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; font-family:"Noto Nastaliq Urdu","Segoe UI",system-ui,sans-serif; background:var(--surface-0); color:var(--text-primary); }
+  main { padding:16px; max-width:680px; margin:0 auto; }
+  h1 { font-size:19px; font-weight:600; margin:16px 0 4px; }
+  .sub { font-size:12px; color:var(--text-secondary); margin:0 0 16px; }
+  .card { background:var(--surface-2); border:0.5px solid var(--border); border-radius:12px; padding:16px; margin-bottom:16px; }
+  h2 { font-size:15px; font-weight:600; margin:0 0 10px; }
+  .tabs { display:flex; gap:6px; margin-bottom:16px; }
+  .tab { flex:1; height:38px; border-radius:8px; border:0.5px solid var(--border); background:var(--surface-2);
+    color:var(--text-primary); font-size:13px; cursor:pointer; }
+  .tab.active { background:#06281f; color:white; border-color:#06281f; }
+  table { width:100%; border-collapse:collapse; font-size:12.5px; }
+  th,td { padding:7px 5px; text-align:right; border-bottom:0.5px solid var(--border); white-space:nowrap; }
+  th { color:var(--text-secondary); font-weight:500; }
+  .tbl-wrap { overflow-x:auto; }
+  .soon { color:#993C1D; font-weight:600; }
+  .mine { background:#eafaf2; }
+  .empty { font-size:13px; color:var(--text-secondary); padding:10px 0; }
+  .status { font-size:12.5px; color:var(--text-secondary); }
+</style>
+</head>
+<body>
+
+<main>
+  <h1>ڈیویڈنڈ / بونس / رائٹ کیلنڈر</h1>
+  <p class="sub">PSX پر اعلان شدہ تمام آئندہ Payouts — خودکار اپڈیٹ</p>
+
+  <div class="card">
+    <h2>آپ کے پورٹ فولیو کے آئندہ Payouts</h2>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th>کوڈ</th><th>ڈیویڈنڈ/بونس/رائٹ</th><th>Ex Date</th><th>دن باقی</th></tr></thead>
+        <tbody id="mineBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="tabs">
+      <button class="tab active" data-range="oneMonth">1 ماہ</button>
+      <button class="tab" data-range="twoMonth">2 ماہ</button>
+      <button class="tab" data-range="sixMonth">6 ماہ</button>
+    </div>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th>کوڈ</th><th>ڈیویڈنڈ</th><th>بونس</th><th>Ex Date</th><th>دن باقی</th></tr></thead>
+        <tbody id="allBody"></tbody>
+      </table>
+    </div>
+    <p class="status" id="status"></p>
+  </div>
+</main>
+
+<script src="auth.js"></script>
+<script>
+let payoutData = null;
+let currentRange = "oneMonth";
+
+function renderMine(rows) {
+  const body = document.getElementById("mineBody");
+  if (!rows.length) {
+    body.innerHTML = `<tr><td colspan="4" class="empty">فی الحال آپ کی ہولڈنگز میں کسی کا Payout اعلان نہیں ہوا</td></tr>`;
+    return;
+  }
+  body.innerHTML = rows
+    .map(
+      (r) => `<tr class="mine">
+        <td style="font-weight:600;">${r.symbol}</td>
+        <td>${r.dividend || r.bonus || r.right || "-"}</td>
+        <td dir="ltr" style="text-align:right;">${r.exDateText}</td>
+        <td class="${r.daysToExDate <= 7 ? "soon" : ""}">${r.daysToExDate} دن</td>
+      </tr>`
+    )
+    .join("");
+}
+
+function renderAll(rows) {
+  const body = document.getElementById("allBody");
+  if (!rows.length) {
+    body.innerHTML = `<tr><td colspan="5" class="empty">اس مدت میں کوئی Payout نہیں ملا</td></tr>`;
+    return;
+  }
+  body.innerHTML = rows
+    .map(
+      (r) => `<tr>
+        <td style="font-weight:600;">${r.symbol}</td>
+        <td>${r.dividend || "-"}</td>
+        <td>${r.bonus || "-"}</td>
+        <td dir="ltr" style="text-align:right;">${r.exDateText}</td>
+        <td class="${r.daysToExDate <= 7 ? "soon" : ""}">${r.daysToExDate} دن</td>
+      </tr>`
+    )
+    .join("");
+}
+
+async function loadPayouts() {
+  document.getElementById("status").textContent = "ڈیٹا لایا جا رہا ہے...";
+  try {
+    const resp = await authFetch("/api/payouts");
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.error || "ڈیٹا نہیں مل سکا");
+    payoutData = data;
+    renderMine(data.myHoldingsPayouts);
+    renderAll(data[currentRange]);
+    document.getElementById("status").textContent =
+      "آخری اپڈیٹ: " + new Date(data.asOf).toLocaleString("ur-PK");
+  } catch (err) {
+    document.getElementById("status").textContent = "خرابی: " + err.message;
+  }
+}
+
+document.querySelectorAll(".tab").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll(".tab").forEach((b) => b.classList.remove("active"));
+    btn.classList.add("active");
+    currentRange = btn.dataset.range;
+    if (payoutData) renderAll(payoutData[currentRange]);
+  });
+});
+
+document.addEventListener("DOMContentLoaded", () => {
+  requireLogin(() => loadPayouts());
+});
+</script>
+
+</body>
+</html>

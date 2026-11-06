@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="ur" dir="rtl">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="theme-color" content="#06281f" />
+<title>میرا پورٹ فولیو — PSX تجزیہ کار</title>
+<link rel="manifest" href="manifest.json" />
+<style>
+  :root {
+    --surface-2: #ffffff; --surface-1: #f4f3ee; --surface-0: #ece8dc;
+    --text-primary: #1a1a18; --text-secondary: #5f5e5a; --border: rgba(0,0,0,0.10);
+    --green-fill:#1baf7a; --red-fill:#e34948;
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; font-family:"Noto Nastaliq Urdu","Segoe UI",system-ui,sans-serif; background:var(--surface-0); color:var(--text-primary); }
+  main { padding:16px; max-width:600px; margin:0 auto; }
+  h1 { font-size:19px; font-weight:600; margin:16px 0; }
+  .card { background:var(--surface-2); border:0.5px solid var(--border); border-radius:12px; padding:16px; margin-bottom:16px; }
+  table { width:100%; border-collapse:collapse; font-size:13px; }
+  th,td { padding:8px 6px; text-align:right; border-bottom:0.5px solid var(--border); }
+  th { color:var(--text-secondary); font-weight:500; }
+  .add-form { display:flex; flex-wrap:wrap; gap:8px; }
+  .add-form input {
+    flex:1; min-width:90px; height:38px; border-radius:8px; border:0.5px solid var(--border);
+    padding:0 10px; font-size:14px; background:var(--surface-1);
+  }
+  .add-form button {
+    height:38px; padding:0 16px; border-radius:8px; border:none;
+    background:var(--green-fill); color:white; font-size:13px; cursor:pointer;
+  }
+  .pl-pos { color:#0F6E56; font-weight:500; }
+  .pl-neg { color:#993C1D; font-weight:500; }
+  .remove-btn { background:none; border:none; color:var(--red-fill); cursor:pointer; font-size:14px; }
+  .summary { font-size:13px; color:var(--text-secondary); margin-top:8px; }
+  .calc-btn { background:none; border:none; color:#0F6E56; cursor:pointer; font-size:12px; text-decoration:underline; }
+  .calc-panel { display:none; background:var(--surface-1); border-radius:8px; padding:10px; margin:6px 0; font-size:12.5px; }
+  .calc-panel.open { display:block; }
+  .calc-row { display:flex; gap:8px; align-items:center; margin-bottom:8px; flex-wrap:wrap; }
+  .calc-row input { height:32px; border-radius:6px; border:0.5px solid var(--border); padding:0 8px; width:100px; }
+  .calc-row button { height:32px; padding:0 12px; border-radius:6px; border:none; background:var(--green-fill); color:white; cursor:pointer; }
+  .calc-result { font-weight:600; margin-top:4px; }
+  .sl-tp { display:flex; gap:14px; flex-wrap:wrap; color:var(--text-secondary); }
+</style>
+</head>
+<body>
+
+<main>
+  <h1>میرا پورٹ فولیو</h1>
+
+  <div class="card">
+    <div class="add-form">
+      <input id="symbolInput" placeholder="سٹاک کوڈ، مثلاً HBL" dir="ltr" style="text-align:right" />
+      <input id="qtyInput" type="number" placeholder="مقدار" />
+      <input id="buyPriceInput" type="number" step="0.01" placeholder="خریدی قیمت" />
+      <button id="addHolding">شامل کریں</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <div style="overflow-x:auto;">
+      <table>
+        <thead>
+          <tr>
+            <th>سٹاک</th>
+            <th>مقدار</th>
+            <th>خریدی قیمت</th>
+            <th>موجودہ قیمت</th>
+            <th>منافع/نقصان</th>
+            <th>کیلکولیٹر</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="holdingsBody"></tbody>
+      </table>
+    </div>
+    <p class="summary" id="summary"></p>
+  </div>
+</main>
+
+<script src="auth.js"></script>
+<script>
+let holdings = [];
+
+async function loadPortfolio() {
+  const resp = await authFetch("/api/portfolio");
+  const data = await resp.json();
+  holdings = data.holdings || [];
+  await refreshPrices();
+  render();
+}
+
+async function refreshPrices() {
+  if (holdings.length === 0) return;
+  const symbols = [...new Set(holdings.map((h) => h.symbol))];
+  const resp = await authFetch("/api/analyze", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ symbols: symbols.slice(0, 10) }),
+  });
+  const results = await resp.json();
+  holdings.forEach((h) => {
+    const match = results.find((r) => r.symbol === h.symbol && !r.error);
+    h.currentPrice = match ? match.price : null;
+  });
+}
+
+function render() {
+  const tbody = document.getElementById("holdingsBody");
+  tbody.innerHTML = "";
+  let totalPL = 0;
+  holdings.forEach((h, idx) => {
+    const pl = h.currentPrice != null ? (h.currentPrice - h.buyPrice) * h.qty : null;
+    if (pl != null) totalPL += pl;
+    const plClass = pl != null ? (pl >= 0 ? "pl-pos" : "pl-neg") : "";
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td style="font-weight:500;">${h.symbol}</td>
+      <td>${h.qty}</td>
+      <td>${h.buyPrice}</td>
+      <td>${h.currentPrice ?? "-"}</td>
+      <td class="${plClass}">${pl != null ? pl.toFixed(2) : "-"}</td>
+      <td><button class="calc-btn" data-idx="${idx}">دیکھیں</button></td>
+      <td><button class="remove-btn" data-idx="${idx}">✕</button></td>
+    `;
+    tbody.appendChild(tr);
+
+    const stopPrice = (h.buyPrice * 0.9).toFixed(2);
+    const stopPrice15 = (h.buyPrice * 0.85).toFixed(2);
+    const targetPrice = (h.buyPrice * 1.15).toFixed(2);
+    const targetPrice25 = (h.buyPrice * 1.25).toFixed(2);
+
+    const panelTr = document.createElement("tr");
+    panelTr.innerHTML = `
+      <td colspan="7" style="padding:0;border:none;">
+        <div class="calc-panel" id="calcPanel${idx}">
+          <div class="sl-tp">
+            <span>اسٹاپ لاس: <b>${stopPrice}</b> (-10%) / <b>${stopPrice15}</b> (-15%)</span>
+            <span>ٹارگٹ: <b>${targetPrice}</b> (+15%) / <b>${targetPrice25}</b> (+25%)</span>
+          </div>
+          <hr style="border:none;border-top:0.5px solid var(--border);margin:8px 0;" />
+          <div><b>ایوریجنگ کیلکولیٹر</b> — موجودہ قیمت پر مزید کتنے شیئرز لینے سے ایوریج فلاں سطح تک آئے گی؟</div>
+          <div class="calc-row">
+            <span>مطلوبہ ایوریج:</span>
+            <input type="number" step="0.01" id="targetAvg${idx}" placeholder="مثلاً 100" />
+            <button data-idx="${idx}" class="calc-run">حساب کریں</button>
+          </div>
+          <div class="calc-result" id="calcResult${idx}"></div>
+        </div>
+      </td>
+    `;
+    tbody.appendChild(panelTr);
+  });
+  document.getElementById("summary").textContent = holdings.length
+    ? `کل منافع/نقصان: ${totalPL.toFixed(2)}`
+    : "ابھی کوئی ہولڈنگ شامل نہیں کی گئی۔";
+
+  tbody.querySelectorAll(".remove-btn").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      holdings.splice(Number(btn.dataset.idx), 1);
+      await savePortfolio();
+      render();
+    });
+  });
+
+  tbody.querySelectorAll(".calc-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      document.getElementById(`calcPanel${btn.dataset.idx}`).classList.toggle("open");
+    });
+  });
+
+  tbody.querySelectorAll(".calc-run").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const idx = Number(btn.dataset.idx);
+      const h = holdings[idx];
+      const resultEl = document.getElementById(`calcResult${idx}`);
+      const targetAvg = parseFloat(document.getElementById(`targetAvg${idx}`).value);
+
+      if (!targetAvg || h.currentPrice == null) {
+        resultEl.textContent = "پہلے مطلوبہ ایوریج درج کریں (اور یقینی بنائیں موجودہ قیمت لوڈ ہو چکی ہے)۔";
+        return;
+      }
+      if (targetAvg === h.currentPrice) {
+        resultEl.textContent = "مطلوبہ ایوریج موجودہ قیمت کے برابر نہیں ہو سکتی۔";
+        return;
+      }
+
+      const requiredQty = (h.qty * (h.buyPrice - targetAvg)) / (targetAvg - h.currentPrice);
+
+      if (requiredQty <= 0 || !Number.isFinite(requiredQty)) {
+        resultEl.textContent = "یہ ایوریج مزید خریداری سے ممکن نہیں — درج کردہ سطح پہلے ہی پیچھے رہ گئی یا سمت غلط ہے۔";
+        return;
+      }
+
+      const roundedQty = Math.ceil(requiredQty);
+      const totalQty = h.qty + roundedQty;
+      const actualAvg = ((h.qty * h.buyPrice) + (roundedQty * h.currentPrice)) / totalQty;
+
+      resultEl.innerHTML = `موجودہ قیمت (${h.currentPrice}) پر مزید <b>${roundedQty}</b> شیئرز خریدنے سے نئی ایوریج تقریباً <b>${actualAvg.toFixed(2)}</b> بن جائے گی (کل ${totalQty} شیئرز)۔`;
+    });
+  });
+}
+
+async function savePortfolio() {
+  await authFetch("/api/portfolio", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ holdings }),
+  });
+}
+
+document.getElementById("addHolding").addEventListener("click", async () => {
+  const symbol = document.getElementById("symbolInput").value.trim().toUpperCase();
+  const qty = parseFloat(document.getElementById("qtyInput").value);
+  const buyPrice = parseFloat(document.getElementById("buyPriceInput").value);
+  if (!symbol || !qty || !buyPrice) return;
+  holdings.push({ symbol, qty, buyPrice });
+  document.getElementById("symbolInput").value = "";
+  document.getElementById("qtyInput").value = "";
+  document.getElementById("buyPriceInput").value = "";
+  await savePortfolio();
+  await refreshPrices();
+  render();
+});
+
+requireLogin(() => loadPortfolio());
+</script>
+</body>
+</html>

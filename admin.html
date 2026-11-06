@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="ur" dir="rtl">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="theme-color" content="#06281f" />
+<title>ایڈمن ویو — PSX تجزیہ کار</title>
+<style>
+  :root {
+    --surface-2: #ffffff; --surface-1: #f4f3ee; --surface-0: #ece8dc;
+    --text-primary: #1a1a18; --text-secondary: #5f5e5a; --border: rgba(0,0,0,0.10);
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; font-family:"Noto Nastaliq Urdu","Segoe UI",system-ui,sans-serif; background:var(--surface-0); color:var(--text-primary); }
+  main { padding:16px; max-width:700px; margin:0 auto; }
+  h1 { font-size:19px; font-weight:600; margin:16px 0; }
+  .card { background:var(--surface-2); border:0.5px solid var(--border); border-radius:12px; padding:16px; margin-bottom:16px; }
+  .user-email { font-weight:600; font-size:14px; margin-bottom:6px; }
+  table { width:100%; border-collapse:collapse; font-size:13px; margin-top:6px; }
+  th,td { padding:6px; text-align:right; border-bottom:0.5px solid var(--border); }
+  th { color:var(--text-secondary); font-weight:500; }
+  .denied { text-align:center; padding:40px 16px; color:var(--text-secondary); }
+</style>
+</head>
+<body>
+
+<main>
+  <h1>ایڈمن ویو — تمام صارفین کے پورٹ فولیوز</h1>
+  <div id="content"></div>
+</main>
+
+<script src="auth.js"></script>
+<script>
+async function loadAdminData() {
+  const content = document.getElementById("content");
+  const user = currentUser();
+
+  if (!isAdmin(user)) {
+    content.innerHTML = `<div class="denied">یہ صفحہ صرف ایڈمن کے لیے ہے۔</div>`;
+    return;
+  }
+
+  const resp = await authFetch("/api/admin-portfolios");
+  if (!resp.ok) {
+    const err = await resp.json().catch(() => ({}));
+    content.innerHTML = `<div class="denied">خرابی: ${err.error || resp.status}</div>`;
+    return;
+  }
+  const allPortfolios = await resp.json();
+
+  if (allPortfolios.length === 0) {
+    content.innerHTML = `<div class="denied">ابھی کسی صارف نے پورٹ فولیو شامل نہیں کیا۔</div>`;
+    return;
+  }
+
+  content.innerHTML = allPortfolios
+    .map((p) => {
+      const rows = (p.holdings || [])
+        .map((h) => `<tr><td style="font-weight:500;">${h.symbol}</td><td>${h.qty}</td><td>${h.buyPrice}</td></tr>`)
+        .join("");
+      return `
+        <div class="card">
+          <div class="user-email">${p.email || p.userId}</div>
+          <table>
+            <thead><tr><th>سٹاک</th><th>مقدار</th><th>خریدی قیمت</th></tr></thead>
+            <tbody>${rows || '<tr><td colspan="3">کوئی ہولڈنگ نہیں</td></tr>'}</tbody>
+          </table>
+        </div>
+      `;
+    })
+    .join("");
+}
+
+requireLogin(() => loadAdminData());
+</script>
+</body>
+</html>

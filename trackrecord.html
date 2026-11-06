@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="ur" dir="rtl">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="theme-color" content="#06281f" />
+<title>AI سفارشات کا ٹریک ریکارڈ — PSX تجزیہ کار</title>
+<link rel="manifest" href="manifest.json" />
+<style>
+  :root {
+    --surface-2: #ffffff; --surface-1: #f4f3ee; --surface-0: #ece8dc;
+    --text-primary: #1a1a18; --text-secondary: #5f5e5a; --border: rgba(0,0,0,0.10);
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; font-family:"Noto Nastaliq Urdu","Segoe UI",system-ui,sans-serif; background:var(--surface-0); color:var(--text-primary); }
+  main { padding:16px; max-width:680px; margin:0 auto; }
+  h1 { font-size:19px; font-weight:600; margin:16px 0 4px; }
+  .sub { font-size:12px; color:var(--text-secondary); margin:0 0 16px; }
+  .card { background:var(--surface-2); border:0.5px solid var(--border); border-radius:12px; padding:16px; margin-bottom:16px; }
+  .winrate { font-size:28px; font-weight:700; }
+  table { width:100%; border-collapse:collapse; font-size:12.5px; }
+  th,td { padding:7px 5px; text-align:right; border-bottom:0.5px solid var(--border); white-space:nowrap; }
+  th { color:var(--text-secondary); font-weight:500; }
+  .tbl-wrap { overflow-x:auto; }
+  .ok { color:#0F6E56; font-weight:600; }
+  .bad { color:#993C1D; font-weight:600; }
+  .neutral { color:var(--text-secondary); }
+  .empty { font-size:13px; color:var(--text-secondary); padding:10px 0; }
+</style>
+</head>
+<body>
+
+<main>
+  <h1>AI سفارشات کا ٹریک ریکارڈ</h1>
+  <p class="sub">پچھلی سفارشات کا بعد میں قیمت سے موازنہ — خود بخود، ہر تجزیہ کے وقت ریکارڈ ہوتا ہے</p>
+
+  <div class="card">
+    <div class="winrate" id="winrate">—</div>
+    <p class="sub" id="winrateSub"></p>
+  </div>
+
+  <div class="card">
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th>کوڈ</th><th>تاریخ</th><th>سفارش</th><th>اس وقت قیمت</th><th>اب قیمت</th><th>تبدیلی</th><th>نتیجہ</th></tr></thead>
+        <tbody id="body"></tbody>
+      </table>
+    </div>
+  </div>
+</main>
+
+<script src="auth.js"></script>
+<script>
+async function load() {
+  try {
+    const resp = await authFetch("/api/track-record");
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.error || "ڈیٹا نہیں مل سکا");
+
+    document.getElementById("winrate").textContent =
+      data.winRate != null ? data.winRate + "%" : "ابھی کافی ریکارڈ نہیں";
+    document.getElementById("winrateSub").textContent =
+      data.totalScored ? `${data.totalScored} سفارشات کی بنیاد پر (Buy/Don't buy صرف)` : "جیسے جیسے تجزیہ ہوتا رہے گا، یہاں ریکارڈ بنتا جائے گا۔";
+
+    const body = document.getElementById("body");
+    if (!data.entries.length) {
+      body.innerHTML = `<tr><td colspan="7" class="empty">ابھی کوئی پرانی سفارش موجود نہیں — جیسے جیسے آپ شیئرز کا تجزیہ کرتے رہیں گے، یہ فہرست خودکار بنتی جائے گی۔</td></tr>`;
+      return;
+    }
+
+    body.innerHTML = data.entries
+      .map((e) => {
+        const changeCls = e.changePct >= 0 ? "ok" : "bad";
+        let resultText = '<span class="neutral">—</span>';
+        if (e.correct === true) resultText = '<span class="ok">✓ درست</span>';
+        if (e.correct === false) resultText = '<span class="bad">✕ غلط</span>';
+        return `<tr>
+          <td style="font-weight:600;">${e.symbol}</td>
+          <td>${e.date}</td>
+          <td>${e.recommendation}</td>
+          <td>${e.priceThen}</td>
+          <td>${e.priceNow}</td>
+          <td class="${changeCls}">${e.changePct >= 0 ? "+" : ""}${e.changePct}%</td>
+          <td>${resultText}</td>
+        </tr>`;
+      })
+      .join("");
+  } catch (err) {
+    document.getElementById("winrate").textContent = "خرابی";
+    document.getElementById("winrateSub").textContent = err.message;
+  }
+}
+
+document.addEventListener("DOMContentLoaded", () => {
+  requireLogin(() => load());
+});
+</script>
+
+</body>
+</html>

@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="ur" dir="rtl">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="theme-color" content="#06281f" />
+<title>مارکیٹ اسکینر — PSX تجزیہ کار</title>
+<link rel="manifest" href="manifest.json" />
+<style>
+  :root {
+    --surface-2: #ffffff; --surface-1: #f4f3ee; --surface-0: #ece8dc;
+    --text-primary: #1a1a18; --text-secondary: #5f5e5a; --border: rgba(0,0,0,0.10);
+    --green-fill:#1baf7a; --red-fill:#e34948;
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; font-family:"Noto Nastaliq Urdu","Segoe UI",system-ui,sans-serif; background:var(--surface-0); color:var(--text-primary); }
+  main { padding:16px; max-width:720px; margin:0 auto; }
+  h1 { font-size:19px; font-weight:600; margin:16px 0 4px; }
+  h2 { font-size:15px; font-weight:600; margin:0 0 10px; }
+  .sub { font-size:12px; color:var(--text-secondary); margin:0 0 16px; }
+  .card { background:var(--surface-2); border:0.5px solid var(--border); border-radius:12px; padding:16px; margin-bottom:16px; }
+  table { width:100%; border-collapse:collapse; font-size:12.5px; }
+  th,td { padding:7px 5px; text-align:right; border-bottom:0.5px solid var(--border); white-space:nowrap; }
+  th { color:var(--text-secondary); font-weight:500; }
+  .tbl-wrap { overflow-x:auto; }
+  .pos { color:#0F6E56; font-weight:600; }
+  .neg { color:#993C1D; font-weight:600; }
+  .scan-btn {
+    height:44px; padding:0 20px; border-radius:8px; border:none;
+    background:#06281f; color:white; font-size:14px; cursor:pointer; width:100%;
+  }
+  .scan-btn:disabled { opacity:0.6; }
+  .status { font-size:13px; color:var(--text-secondary); margin-top:10px; text-align:center; }
+  .note { font-size:11.5px; color:var(--text-secondary); line-height:1.6; margin-top:6px; }
+  .empty { font-size:13px; color:var(--text-secondary); padding:10px 0; }
+</style>
+</head>
+<body>
+
+<main>
+  <h1>مارکیٹ اسکینر</h1>
+  <p class="sub">پوری پاکستان سٹاک ایکسچینج کو ایک ساتھ اسکین کریں</p>
+
+  <div class="card">
+    <button class="scan-btn" id="scanBtn">پوری مارکیٹ اسکین کریں</button>
+    <p class="status" id="status"></p>
+  </div>
+
+  <div class="card">
+    <h2>خریداری رینج — ڈاؤ تھیوری (1 سال میں نمایاں گراوٹ)</h2>
+    <p class="note">یہ شیئرز اپنی ایک سالہ قیمت سے کافی نیچے آ چکے ہیں — ممکنہ طور پر کم ترین سطح کے قریب۔</p>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th>کوڈ</th><th>سیکٹر</th><th>قیمت</th><th>1 سالہ تبدیلی</th></tr></thead>
+        <tbody id="buyBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>فروخت رینج — ڈاؤ تھیوری (1 سال میں نمایاں اضافہ)</h2>
+    <p class="note">یہ شیئرز اپنی ایک سالہ قیمت سے کافی اوپر جا چکے ہیں — ممکنہ طور پر بلند ترین سطح کے قریب۔</p>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th>کوڈ</th><th>سیکٹر</th><th>قیمت</th><th>1 سالہ تبدیلی</th></tr></thead>
+        <tbody id="sellBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>مارکیٹ کیپ اسکرینر (Market Cap &lt; 10,000 Million)</h2>
+    <p class="note">نوٹ: Promoter Holding اور FII Holding کا ڈیٹا PSX کسی ایک جگہ، قابلِ اعتماد شکل میں شائع نہیں کرتی — اس لیے فی الحال صرف Market Cap کی شرط لاگو ہے۔</p>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th>کوڈ</th><th>سیکٹر</th><th>قیمت</th><th>Market Cap (M)</th></tr></thead>
+        <tbody id="capBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>زیادہ Dividend Yield والے شیئرز</h2>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th>کوڈ</th><th>سیکٹر</th><th>قیمت</th><th>Dividend Yield</th></tr></thead>
+        <tbody id="divBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>سیکٹر کے لحاظ سے موازنہ</h2>
+    <p class="note">ہر سیکٹر کی اوسط PE، اوسط Dividend Yield اور ایک سالہ اوسط تبدیلی</p>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th>سیکٹر</th><th>تعداد</th><th>اوسط PE</th><th>اوسط Div Yield</th><th>اوسط 1 سالہ تبدیلی</th></tr></thead>
+        <tbody id="sectorBody"></tbody>
+      </table>
+    </div>
+  </div>
+</main>
+
+<script src="auth.js"></script>
+<script>
+function fmtPct(v) {
+  const cls = v >= 0 ? "pos" : "neg";
+  const sign = v >= 0 ? "+" : "";
+  return `<span class="${cls}">${sign}${v.toFixed(1)}%</span>`;
+}
+
+function renderRows(bodyId, rows, lastColFn) {
+  const body = document.getElementById(bodyId);
+  if (!rows.length) {
+    body.innerHTML = `<tr><td colspan="4" class="empty">کوئی نتیجہ نہیں ملا</td></tr>`;
+    return;
+  }
+  body.innerHTML = rows
+    .map(
+      (r) => `<tr>
+        <td dir="ltr" style="text-align:right;font-weight:600;">${r.symbol}</td>
+        <td>${r.sector || "-"}</td>
+        <td>${r.price.toLocaleString()}</td>
+        <td>${lastColFn(r)}</td>
+      </tr>`
+    )
+    .join("");
+}
+
+async function runScan() {
+  const btn = document.getElementById("scanBtn");
+  const status = document.getElementById("status");
+  btn.disabled = true;
+  status.textContent = "پوری مارکیٹ اسکین ہو رہی ہے — اس میں کچھ سیکنڈ لگ سکتے ہیں...";
+
+  try {
+    const resp = await authFetch("/api/market-scan");
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.error || "اسکین ناکام ہوئی");
+
+    renderRows("buyBody", data.buyZone, (r) => fmtPct(r.yearChangePct));
+    renderRows("sellBody", data.sellZone, (r) => fmtPct(r.yearChangePct));
+    renderRows("capBody", data.capScreener, (r) => r.marketCapM.toLocaleString());
+    renderRows("divBody", data.dividendYieldTop, (r) => r.dividendYield.toFixed(2) + "%");
+
+    const sectorBody = document.getElementById("sectorBody");
+    sectorBody.innerHTML = data.sectorSummary
+      .map(
+        (s) => `<tr>
+          <td>${s.sector}</td>
+          <td>${s.count}</td>
+          <td>${s.avgPe ?? "-"}</td>
+          <td>${s.avgDividendYield ?? "-"}%</td>
+          <td>${fmtPct(s.avgYearChangePct)}</td>
+        </tr>`
+      )
+      .join("");
+
+    status.textContent = `${data.totalScanned} شیئرز اسکین ہوئے — ${new Date(data.asOf).toLocaleString("ur-PK")}`;
+  } catch (err) {
+    status.textContent = "خرابی: " + err.message;
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+document.addEventListener("DOMContentLoaded", () => {
+  requireLogin(() => {
+    document.getElementById("scanBtn").addEventListener("click", runScan);
+  });
+});
+</script>
+
+</body>
+</html>
