@@ -15,6 +15,7 @@
  */
 const { initBlobs, recommendationStore } = require("./lib/blobStore");
 const { fetchScreener } = require("./lib/psxScreener");
+const { fetchHistory } = require("./lib/psxData");
 
 exports.handler = async (event, context) => {
   initBlobs(event);
@@ -28,15 +29,27 @@ exports.handler = async (event, context) => {
     const { blobs } = await store.list();
 
     const today = new Date().toISOString().slice(0, 10);
-    const screenerRows = await fetchScreener();
     const priceBySymbol = {};
-    for (const r of screenerRows) priceBySymbol[r.symbol] = r.price;
+    try {
+      const screenerRows = await fetchScreener();
+      for (const r of screenerRows) priceBySymbol[r.symbol] = r.price;
+    } catch {
+      // PSX screener unavailable — fall back to each symbol's latest close below.
+    }
 
     const entries = [];
     for (const b of blobs) {
       const rec = await store.get(b.key, { type: "json" });
       if (!rec || rec.date === today) continue;
 
+      if (priceBySymbol[rec.symbol] == null) {
+        try {
+          const h = await fetchHistory(rec.symbol, 15);
+          priceBySymbol[rec.symbol] = h[h.length - 1].close;
+        } catch {
+          // leave unset — this entry is skipped below
+        }
+      }
       const currentPrice = priceBySymbol[rec.symbol];
       if (currentPrice == null || currentPrice <= 0) continue;
 
