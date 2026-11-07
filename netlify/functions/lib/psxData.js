@@ -8,82 +8,112 @@
  * part that needs updating.
  */
 
-const cheerio = require("cheerio");
-
 const HEADERS = {
   "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
 };
 
 class PSXDataError extends Error {}
 
-function parseHistoryHtml(html) {
-  const $ = cheerio.load(html);
+// --- Source 1: PSX's own JSON end-of-day feed -----------------------------
+// GET /timeseries/eod/<SYMBOL>  ->  { data: [[epochSeconds, close, volume, open], ...] }
+// newest first, ~5 years. No High/Low in this feed (indicators fall back to close).
+async function historyFromPSX(sym, days) {
+  let resp;
+  try {
+    resp = await fetch(`https://dps.psx.com.pk/timeseries/eod/${encodeURIComponent(sym)}`, {
+      headers: { ...HEADERS, Accept: "application/json", Referer: "https://dps.psx.com.pk/" },
+    });
+  } catch (e) {
+    throw new Error(`network error: ${e.message}`);
+  }
+  if (!resp.ok) throw new Error(`status ${resp.status}`);
+
+  let json;
+  try {
+    json = await resp.json();
+  } catch {
+    throw new Error("PSX نے JSON کی جگہ کچھ اور بھیجا");
+  }
+
+  const points = Array.isArray(json?.data) ? json.data : [];
+  const cutoff = Date.now() - days * 86400000;
+  const rows = points
+    .map(([ts, close, volume, open]) => {
+      const c = Number(close);
+      if (!Number.isFinite(c) || !Number.isFinite(Number(ts))) return null;
+      // PSX epochs are Pakistan wall-clock seconds: read as UTC = correct calendar date.
+      const d = new Date(Number(ts) * 1000);
+      return {
+        t: d.getTime(),
+        date: d.toISOString().slice(0, 10),
+        open: Number.isFinite(Number(open)) ? Number(open) : null,
+        high: null,
+        low: null,
+        close: c,
+        volume: Number.isFinite(Number(volume)) ? Number(volume) : null,
+      };
+    })
+    .filter((r) => r && r.t >= cutoff)
+    .sort((a, b) => a.t - b.t)
+    .map(({ t, ...rest }) => rest);
+
+  if (rows.length === 0) throw new Error("کوئی ڈیٹا نہیں");
+  return rows;
+}
+
+// --- Source 2 (fallback): Yahoo Finance, PSX tickers end in ".KA" ----------
+// Free, no key, includes High/Low. Covers normal shares; not ETFs/indices.
+async function historyFromYahoo(sym, days) {
+  const range = days > 365 ? "2y" : "1y";
+  let resp;
+  try {
+    resp = await fetch(
+      `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(sym)}.KA?range=${range}&interval=1d`,
+      { headers: { ...HEADERS, Accept: "application/json" } }
+    );
+  } catch (e) {
+    throw new Error(`network error: ${e.message}`);
+  }
+  if (!resp.ok) throw new Error(`status ${resp.status}`);
+
+  const json = await resp.json();
+  const r = json?.chart?.result?.[0];
+  const ts = r?.timestamp || [];
+  const q = r?.indicators?.quote?.[0] || {};
   const rows = [];
-
-  $("table tr").each((_, el) => {
-    const cells = $(el)
-      .find("td")
-      .map((__, td) => $(td).text().trim())
-      .get();
-    if (cells.length >= 5) {
-      const [date, open, high, low, close, volume] = cells;
-      const closeNum = parseFloat(close.replace(/,/g, ""));
-      if (!Number.isNaN(closeNum)) {
-        rows.push({
-          date,
-          open: parseFloat(open.replace(/,/g, "")) || null,
-          high: parseFloat(high.replace(/,/g, "")) || null,
-          low: parseFloat(low.replace(/,/g, "")) || null,
-          close: closeNum,
-          volume: volume ? parseFloat(volume.replace(/,/g, "")) || null : null,
-        });
-      }
-    }
-  });
-
-  // DPS lists most recent first — we want oldest-first for indicator math.
-  return rows.reverse();
+  for (let i = 0; i < ts.length; i++) {
+    const close = Number(q.close?.[i]);
+    if (!Number.isFinite(close) || q.close?.[i] == null) continue;
+    const num = (v) => (v == null || !Number.isFinite(Number(v)) ? null : Number(v));
+    rows.push({
+      date: new Date(ts[i] * 1000).toISOString().slice(0, 10),
+      open: num(q.open?.[i]),
+      high: num(q.high?.[i]),
+      low: num(q.low?.[i]),
+      close,
+      volume: num(q.volume?.[i]),
+    });
+  }
+  if (rows.length === 0) throw new Error("کوئی ڈیٹا نہیں");
+  return rows;
 }
 
 async function fetchHistory(symbol, days = 400) {
   const sym = symbol.trim().toUpperCase();
-  const dateTo = new Date();
-  const dateFrom = new Date(dateTo);
-  dateFrom.setDate(dateFrom.getDate() - days);
+  const problems = [];
 
-  const fmt = (d) => d.toISOString().slice(0, 10);
-
-  const params = new URLSearchParams({
-    symbol: sym,
-    dateFrom: fmt(dateFrom),
-    dateTo: fmt(dateTo),
-  });
-
-  let resp;
   try {
-    resp = await fetch("https://dps.psx.com.pk/historical", {
-      method: "POST",
-      headers: { ...HEADERS, "Content-Type": "application/x-www-form-urlencoded" },
-      body: params.toString(),
-    });
+    return await historyFromPSX(sym, days);
   } catch (e) {
-    throw new PSXDataError(`'${sym}' کی تاریخی قیمتیں نہیں ملیں / network error: ${e.message}`);
+    problems.push(`PSX: ${e.message}`);
+  }
+  try {
+    return await historyFromYahoo(sym, days);
+  } catch (e) {
+    problems.push(`Yahoo: ${e.message}`);
   }
 
-  if (!resp.ok) {
-    throw new PSXDataError(`'${sym}' کے لیے PSX سے جواب نہیں ملا (status ${resp.status})`);
-  }
-
-  const html = await resp.text();
-  const rows = parseHistoryHtml(html);
-
-  if (rows.length === 0) {
-    throw new PSXDataError(
-      `'${sym}' کے لیے کوئی ڈیٹا نہیں ملا — یا تو کوڈ غلط ہے یا PSX کے صفحے کی ساخت بدل گئی ہے`
-    );
-  }
-
-  return rows;
+  throw new PSXDataError(`'${sym}' کی قیمتیں کسی بھی ذریعے سے نہیں ملیں — ${problems.join(" | ")}`);
 }
 
 /**
@@ -121,10 +151,10 @@ async function fetchIntraday(symbol) {
     throw new PSXDataError(`'${sym}' کے لیے آج کا کوئی ڈیٹا نہیں ملا (ممکن ہے مارکیٹ بند ہو)`);
   }
 
-  return points.map(([ts, price]) => ({
-    time: new Date(ts * 1000).toISOString(),
-    price: Number(price),
-  }));
+  return points
+    .map(([ts, price]) => ({ ts: Number(ts), time: new Date(Number(ts) * 1000).toISOString(), price: Number(price) }))
+    .sort((a, b) => a.ts - b.ts)
+    .map(({ ts, ...rest }) => rest);
 }
 
 module.exports = { fetchHistory, fetchIntraday, PSXDataError };
