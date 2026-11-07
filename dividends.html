@@ -117,7 +117,9 @@ async function loadPayouts() {
     renderMine(data.myHoldingsPayouts);
     renderAll(data[currentRange]);
     document.getElementById("status").textContent =
-      "آخری اپڈیٹ: " + new Date(data.asOf).toLocaleString("ur-PK");
+      data.rowsFound === 0
+        ? "PSX کے Payouts صفحے سے کوئی قطار نہیں ملی — صفحے کی ساخت بدلی ہو سکتی ہے (یہ ایپ کی طرف سے پہچان نہیں ہو رہی)۔"
+        : `PSX سے ${data.rowsFound} Payouts پڑھے گئے — آخری اپڈیٹ: ` + new Date(data.asOf).toLocaleString("ur-PK");
   } catch (err) {
     document.getElementById("status").textContent = "خرابی: " + err.message;
   }
