@@ -43,11 +43,16 @@ function parseScreenerHtml(html) {
   const rows = [];
 
   $("table tr").each((_, el) => {
-    const cells = $(el)
-      .find("td")
-      .map((__, td) => $(td).text().trim())
-      .get();
+    const tds = $(el).find("td");
+    const cells = tds.map((__, td) => $(td).text().trim()).get();
     if (cells.length < 11) return;
+
+    // The symbol cell can carry an ex-dividend badge glued to the symbol
+    // (visible text like "EFERTXD"); the clean symbol lives in data-order
+    // or in the link text.
+    const firstTd = tds.first();
+    const cleanSymbol =
+      (firstTd.attr("data-order") || firstTd.find("a").first().text() || "").trim();
 
     const [
       symbolCell,
@@ -65,7 +70,7 @@ function parseScreenerHtml(html) {
 
     // The symbol cell sometimes carries a trailing badge like "NC"/"XD"
     // (e.g. "AABS NC") — the real symbol is always the first token.
-    const symbol = (symbolCell || "").split(/\s+/)[0];
+    const symbol = (cleanSymbol || symbolCell || "").split(/\s+/)[0];
     if (!symbol || !/^[A-Z0-9]+$/i.test(symbol)) return;
 
     rows.push({
