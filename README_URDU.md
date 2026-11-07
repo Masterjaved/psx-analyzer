@@ -65,6 +65,8 @@
 | 402 (Payment Required) | Netlify کی Usage/Credits کی حد — Team → Usage and billing دیکھیں |
 | "Blobs ... not been configured" | اس ZIP میں ٹھیک ہے؛ اگر پھر بھی آئے تو `BLOBS_SITE_ID` (پروجیکٹ ID) اور `BLOBS_TOKEN` (Personal access token) Environment variables میں ڈال دیں |
 | ڈیویڈنڈ کیلنڈر خالی | PSX کے Payouts صفحے کی ساخت کی تصدیق باقی ہے — Functions لاگ یا اسکرین شاٹ بھیجیں |
+| تجزیے میں "PSX سے جواب نہیں ملا (status 404 / 403)" | موجودہ قیمت، نفع/نقصان اور ٹریک ریکارڈ سب اسی ڈیٹا پر چلتے ہیں۔ اس ZIP میں پہلے PSX کا JSON پتہ (`/timeseries/eod/`) اور وہ نہ چلے تو Yahoo Finance (`SYMBOL.KA`) خودکار آزمایا جاتا ہے۔ اگر پھر بھی 403/404 آئے تو ممکن ہے PSX نے Netlify کے سرور کو روکا ہو — اسکرین شاٹ بھیجیں |
+| ٹریک ریکارڈ خالی | یہ تب بھرتا ہے جب تجزیہ کامیاب ہو اور اگلے دن اس کا موازنہ ہو سکے |
 | لاگ ان کے بعد 401 | Identity میں صارف موجود/کنفرم ہے؟ لاگ آؤٹ کر کے دوبارہ لاگ ان کریں |
 
 نوٹ: "Promoter/FII Holding" کی اسکریننگ شامل نہیں — PSX یہ ڈیٹا ایک جگہ منظم شکل میں نہیں دیتا۔ مارکیٹ کیپ والی شرط شامل ہے۔
