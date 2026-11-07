@@ -10,6 +10,7 @@ exports.handler = async (event, context) => {
 
   try {
     const rows = await fetchPayouts();
+    const rowsFound = rows.length;
     const now = new Date();
 
     const withDays = rows
@@ -43,6 +44,7 @@ exports.handler = async (event, context) => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         asOf: now.toISOString(),
+        rowsFound,
         oneMonth,
         twoMonth,
         sixMonth,
